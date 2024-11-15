@@ -2,105 +2,84 @@
 
 # Max Flow and Min Cut Implementation
 
-## Overview
-This repository includes two methods for solving the **maximum flow** and **minimum cut** problems in a flow network using Linear Programming (LP) and Residual Graph concepts.
+# Understanding Edges and Neighbors in the Methods
+
+## **Edges in the Graph**
+- **Definition**: In a graph, an edge represents a connection or a pathway between two nodes (`u` and `v`).
+- **Role in the Methods**:
+  - **`max_flow_lp`**:
+    - Each edge `(u, v)` in the graph is associated with a flow variable (`flow_{u}_{v}`), which represents the amount of flow passing through that edge.
+    - The capacities dictionary defines the maximum amount of flow each edge can handle.
+    - The solver calculates how much flow should pass through each edge to maximize the overall flow from the `source` to the `target`.
+
+  - **`find_min_cut`**:
+    - Edges are used to construct a **residual graph**, which reflects the remaining capacities and possible flow reversals after solving for maximum flow.
+    - The method identifies edges that form the minimum cut by analyzing the reachable nodes in the residual graph.
+
+## **Neighbors in the Graph**
+- **Definition**: A neighbor of a node is another node connected to it by an edge.
+- **Role in the Methods**:
+  - **`max_flow_lp`**:
+    - When defining the objective function, neighbors of the `source` node are identified using:
+      ```python
+      set(v for u, v in graph if u == source)
+      ```
+      This ensures the total outgoing flow from the `source` node to its neighbors is maximized.
+    - For flow conservation constraints, neighbors are used to calculate the inflow and outflow for each node:
+      - **Inflow**: Sum of flows into the node from all its neighbors.
+      - **Outflow**: Sum of flows out of the node to all its neighbors.
+
+  - **`find_min_cut`**:
+    - Neighbors play a critical role in the traversal of the **residual graph**:
+      - Starting from the `source`, neighbors of each node are explored to find all reachable nodes using Depth-First Search (DFS).
+      - This traversal identifies which nodes are accessible from the `source` in the residual graph and determines the edges that form the **minimum cut**.
+
+## **Key Functions Using Edges and Neighbors**
+1. **Objective Function in `max_flow_lp`**:
+   - The flow out of the `source` is calculated by summing the flow variables for all its neighbors:
+     ```python
+     sum(flow_vars[(source, v)] for v in set(v for u, v in graph if u == source))
+     ```
+
+2. **Flow Conservation in `max_flow_lp`**:
+   - For each node, the inflow (sum of incoming flows) is calculated using:
+     ```python
+     sum(flow_vars[(u, node)] for u, v in graph if (u, node) in flow_vars)
+     ```
+   - Similarly, the outflow (sum of outgoing flows) is calculated using:
+     ```python
+     sum(flow_vars[(node, v)] for u, v in graph if (node, v) in flow_vars)
+     ```
+
+3. **Residual Graph in `find_min_cut`**:
+   - Neighbors are stored in an adjacency list format to represent possible paths:
+     ```python
+     residual_graph.setdefault(u, []).append(v)
+     ```
+
+4. **DFS for Reachable Nodes in `find_min_cut`**:
+   - Neighbors are explored during the traversal of the residual graph:
+     ```python
+     for neighbor in residual_graph.get(node, []):
+         if neighbor not in reachable:
+             stack.append(neighbor)
+     ```
+
+5. **Identifying Minimum Cut Edges in `find_min_cut`**:
+   - An edge `(u, v)` is part of the minimum cut if:
+     - `u` is reachable from the `source`, but `v` is not:
+       ```python
+       if u in reachable and v not in reachable:
+           min_cut.append((u, v))
+       ```
 
 ---
 
-## Method: `max_flow_lp(graph, capacities, source, target)`
-This method calculates the **maximum flow** in a flow network using **Linear Programming**.
+## **Summary**
+- **Edges** define the pathways in the graph and are associated with flow capacities.
+- **Neighbors** of a node represent its direct connections and are used to:
+  - Maximize flow in the `max_flow_lp` method.
+  - Traverse the residual graph and identify the minimum cut in the `find_min_cut` method.
+- These concepts are fundamental for solving the maximum flow and minimum cut problems efficiently.
 
-### **Inputs:**
-- `graph`: A list of edges in the flow network, e.g., `[(u, v), ...]`.
-- `capacities`: A dictionary specifying the capacity of each edge, e.g., `{(u, v): capacity}`.
-- `source`: The source node where the flow originates.
-- `target`: The sink node where the flow ends.
 
-### **Steps:**
-1. **Initialize LP Problem:**
-   - Creates an `LpProblem` to **maximize the flow**.
-
-2. **Define Variables:**
-   - For each edge `(u, v)` with a capacity, a decision variable `flow_{u}_{v}` is created:
-     - `lowBound=0` (flow cannot be negative).
-     - `upBound=capacities[(u, v)]` (flow cannot exceed edge capacity).
-
-3. **Set Objective Function:**
-   - Maximizes the total flow out of the `source` node:
-     \[
-     \text{maximize: } \sum (\text{flow from source to its neighbors})
-     \]
-
-4. **Flow Conservation Constraints:**
-   - For each intermediate node (excluding `source` and `target`), ensures that:
-     \[
-     \sum (\text{flow into node}) = \sum (\text{flow out of node})
-     \]
-
-5. **Solve the Problem:**
-   - Uses the solver to find an optimal solution. If no solution exists, it returns `None`.
-
-6. **Extract and Return Solution:**
-   - Constructs and returns a dictionary (`flow_solution`) containing the flow values for each edge.
-
-### **Output:**
-- A dictionary mapping edges to flow values, e.g., `{(u, v): flow_value}`.
-
----
-
-## Method: `find_min_cut(graph, capacities, flow_solution, source)`
-This method computes the **minimum cut** of a flow network based on the flow solution from the `max_flow_lp` method.
-
-### **Inputs:**
-- `graph`: A list of edges in the flow network, e.g., `[(u, v), ...]`.
-- `capacities`: A dictionary specifying the capacity of each edge, e.g., `{(u, v): capacity}`.
-- `flow_solution`: The flow values for each edge, returned by `max_flow_lp`.
-- `source`: The source node where the flow originates.
-
-### **Steps:**
-1. **Build Residual Graph:**
-   - Constructs a residual graph based on the remaining capacity of each edge:
-     - If `capacity - flow > 0`, adds the edge `(u -> v)` to the residual graph.
-     - If `flow > 0`, adds the reverse edge `(v -> u)` to allow for flow reversal.
-
-2. **Find Reachable Nodes:**
-   - Uses a **Depth-First Search (DFS)** starting from the `source` to find all nodes reachable in the residual graph.
-
-3. **Identify Minimum Cut Edges:**
-   - Iterates through all edges `(u, v)` in the original graph:
-     - If `u` is in the reachable set and `v` is not, the edge `(u, v)` is part of the **minimum cut**.
-
-4. **Return Minimum Cut:**
-   - Returns a list of edges in the minimum cut.
-
-### **Output:**
-- A list of edges representing the **minimum cut**, e.g., `[(u, v), ...]`.
-
----
-
-## Key Concepts
-1. **Maximum Flow (Ford-Fulkerson Framework):**
-   - The maximum flow is the largest amount of "flow" that can be pushed from the `source` to the `target` without exceeding edge capacities.
-
-2. **Minimum Cut:**
-   - The minimum cut is a partition of nodes into two disjoint sets (`source-side` and `sink-side`) such that the total capacity of edges crossing the partition is minimized.
-   - By the **Max-Flow Min-Cut Theorem**, the value of the maximum flow equals the capacity of the minimum cut.
-
-3. **Residual Graph:**
-   - A graph representing the remaining capacity of edges after accounting for flow. It also includes reverse edges for possible flow reduction.
-
----
-
-## How These Methods Work Together
-- `max_flow_lp`: Computes the maximum flow in the network.
-- `find_min_cut`: Uses the flow solution to determine the minimum cut edges separating the `source` from the `target`.
-
-These methods are useful for solving problems in network routing, resource allocation, and optimization.
-
----
-
-## Example Use Case
-1. Define the `graph`, `capacities`, `source`, and `target`.
-2. Compute the maximum flow:
-   ```python
-   flow_solution = max_flow_lp(graph, capacities, source, target)
